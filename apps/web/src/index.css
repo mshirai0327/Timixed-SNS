@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #0d0d12;
+  font-family: 'Noto Sans JP', 'Zen Kaku Gothic New', system-ui, sans-serif;
+}
+
+html {
+  background: #0d0d12;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top, rgba(124, 58, 237, 0.12), transparent 32%),
+    linear-gradient(180deg, #0d0d12 0%, #09090d 100%);
+  color: #fff;
+  font-family: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+textarea,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(167, 139, 250, 0.35);
+}

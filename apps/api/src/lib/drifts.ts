@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 
-import type { CreateDriftResponse, DriftPublic, TimelineResponse } from "@drift/types";
+import type { CreateDriftResponse, DriftPublic, TimelineResponse } from "@timixed-diary/types";
 
+import { getCache } from "./cache";
+import { sql } from "./db";
 import { ApiError } from "./errors";
-import { supabaseAdmin } from "./supabase";
 
 const DEFAULT_TIMELINE_LIMIT = 20;
 const MAX_TIMELINE_LIMIT = 50;
@@ -49,7 +50,7 @@ export function parseTimelinePagination(
   return { limit, offset };
 }
 
-function normalizeSessionSeed(seedHeader?: string): number | null {
+function normalizeSessionSeed(seedHeader?: string): string | null {
   if (!seedHeader) {
     return null;
   }
@@ -58,10 +59,7 @@ function normalizeSessionSeed(seedHeader?: string): number | null {
     throw new ApiError(400, "VALIDATION_ERROR", "X-Session-Seed must be a UUID.");
   }
 
-  const hash = crypto.createHash("sha256").update(seedHeader).digest();
-  const bucket = hash.readUInt32BE(0);
-
-  return (bucket / 0xffffffff) * 2 - 1;
+  return crypto.createHash("sha256").update(seedHeader).digest("hex");
 }
 
 function normalizeBody(body: string): string {
@@ -95,46 +93,59 @@ function mapTimelineRow(row: TimelineRow): DriftPublic {
   };
 }
 
-export async function createDrift(userId: string, body: string): Promise<CreateDriftResponse> {
-  const normalizedBody = normalizeBody(body);
-  const threshold = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+async function assertPostingRateLimit(userId: string) {
+  const cache = getCache();
 
-  const { count, error: rateLimitError } = await supabaseAdmin
-    .from("drifts")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .gte("composed_at", threshold);
+  if (cache?.isOpen) {
+    const bucket = new Date().toISOString().slice(0, 13);
+    const key = `rate-limit:drifts:${userId}:${bucket}`;
+    const count = await cache.incr(key);
 
-  if (rateLimitError) {
-    throw new ApiError(500, "INTERNAL_ERROR", "Failed to validate your posting rate.");
+    if (count === 1) {
+      await cache.expire(key, 60 * 60 + 30);
+    }
+
+    if (count > MAX_DRIFTS_PER_HOUR) {
+      throw new ApiError(
+        429,
+        "RATE_LIMIT_EXCEEDED",
+        "You can only send 10 drifts per hour.",
+      );
+    }
+
+    return;
   }
 
-  if ((count ?? 0) >= MAX_DRIFTS_PER_HOUR) {
+  const threshold = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const rows = await sql<{ count: string }[]>`
+    select count(*)::text as count
+    from drifts
+    where user_id = ${userId}
+      and composed_at >= ${threshold}
+  `;
+
+  if (Number(rows[0]?.count ?? "0") >= MAX_DRIFTS_PER_HOUR) {
     throw new ApiError(
       429,
       "RATE_LIMIT_EXCEEDED",
       "You can only send 10 drifts per hour.",
     );
   }
+}
 
-  const { data, error } = await supabaseAdmin
-    .from("drifts")
-    .insert({
-      user_id: userId,
-      body: normalizedBody,
-    })
-    .select("id")
-    .single();
+export async function createDrift(userId: string, body: string): Promise<CreateDriftResponse> {
+  const normalizedBody = normalizeBody(body);
+  await assertPostingRateLimit(userId);
 
-  if (error || !data) {
-    if (error?.code === "23503") {
-      throw new ApiError(
-        403,
-        "FORBIDDEN",
-        "A profile row is required before posting. Check the users trigger or create the profile first.",
-      );
-    }
+  const rows = await sql<{ id: string }[]>`
+    insert into drifts (user_id, body)
+    values (${userId}, ${normalizedBody})
+    returning id
+  `;
 
+  const data = rows[0];
+
+  if (!data) {
     throw new ApiError(500, "INTERNAL_ERROR", "Failed to create the drift.");
   }
 
@@ -145,7 +156,7 @@ export async function createDrift(userId: string, body: string): Promise<CreateD
 }
 
 export async function getTimeline(
-  viewerId: string,
+  viewerId: string | null,
   limitParam?: string,
   offsetParam?: string,
   seedHeader?: string,
@@ -153,18 +164,162 @@ export async function getTimeline(
   const { limit, offset } = parseTimelinePagination(limitParam, offsetParam);
   const seed = normalizeSessionSeed(seedHeader);
 
-  const { data, error } = await supabaseAdmin.rpc("get_timeline_entries", {
-    p_limit: limit + 1,
-    p_offset: offset,
-    p_seed: seed,
-    p_viewer_id: viewerId,
-  });
+  let rows: TimelineRow[];
 
-  if (error) {
-    throw new ApiError(500, "INTERNAL_ERROR", "Failed to load the timeline.");
+  if (!viewerId) {
+    rows = seed
+      ? await sql<TimelineRow[]>`
+        select
+          d.id,
+          u.id as author_id,
+          u.handle as author_handle,
+          u.display_name as author_display_name,
+          u.avatar_url as author_avatar_url,
+          d.body,
+          d.resurface_count,
+          coalesce(rc.resonance_count, 0)::int as resonance_count,
+          false as is_resonated,
+          false as is_mine
+        from drifts d
+        join users u on u.id = d.user_id
+        left join lateral (
+          select count(*) as resonance_count
+          from resonances r
+          where r.drift_id = d.id
+        ) rc on true
+        where d.deleted_at is null
+          and d.surface_at <= now()
+        order by md5(d.id::text || ${seed})
+        limit ${limit + 1}
+        offset ${offset}
+      `
+      : await sql<TimelineRow[]>`
+        select
+          d.id,
+          u.id as author_id,
+          u.handle as author_handle,
+          u.display_name as author_display_name,
+          u.avatar_url as author_avatar_url,
+          d.body,
+          d.resurface_count,
+          coalesce(rc.resonance_count, 0)::int as resonance_count,
+          false as is_resonated,
+          false as is_mine
+        from drifts d
+        join users u on u.id = d.user_id
+        left join lateral (
+          select count(*) as resonance_count
+          from resonances r
+          where r.drift_id = d.id
+        ) rc on true
+        where d.deleted_at is null
+          and d.surface_at <= now()
+        order by random()
+        limit ${limit + 1}
+        offset ${offset}
+      `;
+  } else {
+    rows = seed
+      ? await sql<TimelineRow[]>`
+        select
+          d.id,
+          u.id as author_id,
+          u.handle as author_handle,
+          u.display_name as author_display_name,
+          u.avatar_url as author_avatar_url,
+          d.body,
+          d.resurface_count,
+          coalesce(rc.resonance_count, 0)::int as resonance_count,
+          coalesce(me.is_resonated, false) as is_resonated,
+          d.user_id = ${viewerId} as is_mine
+        from drifts d
+        join users u on u.id = d.user_id
+        left join lateral (
+          select count(*) as resonance_count
+          from resonances r
+          where r.drift_id = d.id
+        ) rc on true
+        left join lateral (
+          select true as is_resonated
+          from resonances r
+          where r.drift_id = d.id
+            and r.user_id = ${viewerId}
+          limit 1
+        ) me on true
+        where d.deleted_at is null
+          and (
+            d.user_id = ${viewerId}
+            or d.surface_at <= now()
+          )
+          and (
+            d.user_id = ${viewerId}
+            or exists (
+              select 1
+              from follows f
+              where f.follower_id = ${viewerId}
+                and f.following_id = d.user_id
+            )
+            or not exists (
+              select 1
+              from follows onboarding_follows
+              where onboarding_follows.follower_id = ${viewerId}
+            )
+          )
+        order by md5(d.id::text || ${seed})
+        limit ${limit + 1}
+        offset ${offset}
+      `
+      : await sql<TimelineRow[]>`
+        select
+          d.id,
+          u.id as author_id,
+          u.handle as author_handle,
+          u.display_name as author_display_name,
+          u.avatar_url as author_avatar_url,
+          d.body,
+          d.resurface_count,
+          coalesce(rc.resonance_count, 0)::int as resonance_count,
+          coalesce(me.is_resonated, false) as is_resonated,
+          d.user_id = ${viewerId} as is_mine
+        from drifts d
+        join users u on u.id = d.user_id
+        left join lateral (
+          select count(*) as resonance_count
+          from resonances r
+          where r.drift_id = d.id
+        ) rc on true
+        left join lateral (
+          select true as is_resonated
+          from resonances r
+          where r.drift_id = d.id
+            and r.user_id = ${viewerId}
+          limit 1
+        ) me on true
+        where d.deleted_at is null
+          and (
+            d.user_id = ${viewerId}
+            or d.surface_at <= now()
+          )
+          and (
+            d.user_id = ${viewerId}
+            or exists (
+              select 1
+              from follows f
+              where f.follower_id = ${viewerId}
+                and f.following_id = d.user_id
+            )
+            or not exists (
+              select 1
+              from follows onboarding_follows
+              where onboarding_follows.follower_id = ${viewerId}
+            )
+          )
+        order by random()
+        limit ${limit + 1}
+        offset ${offset}
+      `;
   }
 
-  const rows = (data ?? []) as TimelineRow[];
   const hasMore = rows.length > limit;
 
   return {
@@ -172,4 +327,3 @@ export async function getTimeline(
     has_more: hasMore,
   };
 }
-

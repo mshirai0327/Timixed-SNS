@@ -1,5 +1,5 @@
 {
-  "name": "@drift/api",
+  "name": "@timixed-diary/api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,12 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@drift/types": "workspace:*",
+    "@timixed-diary/types": "workspace:*",
     "@hono/node-server": "^1.14.0",
-    "@supabase/supabase-js": "^2.49.4",
     "hono": "^4.7.6",
+    "jose": "^6.0.11",
+    "postgres": "^3.4.7",
+    "redis": "^5.8.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {

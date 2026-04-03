@@ -1,4 +1,4 @@
-export type DriftAuthorPublic = {
+export type PublicUser = {
   id: string;
   handle: string;
   display_name: string;
@@ -7,7 +7,7 @@ export type DriftAuthorPublic = {
 
 export type DriftPublic = {
   id: string;
-  author: DriftAuthorPublic;
+  author: PublicUser;
   body: string;
   resurface_count: number;
   resonance_count: number;
@@ -34,11 +34,35 @@ export type CreateDriftResponse = {
   is_mine: true;
 };
 
+export type RegisterRequest = {
+  email: string;
+  handle: string;
+  display_name: string;
+  password: string;
+};
+
+export type LoginRequest = {
+  login: string;
+  password: string;
+};
+
+export type AuthResponse = {
+  token: string;
+  user: PublicUser;
+};
+
+export type SessionResponse = {
+  user: PublicUser;
+};
+
 export type ApiErrorCode =
   | "VALIDATION_ERROR"
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "DRIFT_NOT_FOUND"
+  | "INVALID_CREDENTIALS"
+  | "EMAIL_ALREADY_USED"
+  | "HANDLE_ALREADY_USED"
   | "RATE_LIMIT_EXCEEDED"
   | "INTERNAL_ERROR";
 
@@ -48,4 +72,3 @@ export type ErrorResponse = {
     message: string;
   };
 };
-

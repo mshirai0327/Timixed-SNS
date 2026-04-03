@@ -12,10 +12,9 @@
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
-      "@drift/types": [
+      "@timixed-diary/types": [
         "packages/types/src/index.ts"
       ]
     }
   }
 }
-

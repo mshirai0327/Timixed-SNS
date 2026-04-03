@@ -1,4 +1,4 @@
-import type { ErrorResponse } from "@drift/types";
+import type { ErrorResponse } from "@timixed-diary/types";
 import { ZodError } from "zod";
 
 export class ApiError extends Error {
@@ -64,4 +64,3 @@ export function toErrorResponse(error: unknown): {
     },
   };
 }
-

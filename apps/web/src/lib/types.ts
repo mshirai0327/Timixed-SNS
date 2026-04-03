@@ -1,6 +1,10 @@
 export type {
+  AuthResponse,
   CreateDriftResponse as DriftCreateResponse,
-  DriftAuthorPublic as DriftAuthor,
   DriftPublic,
+  LoginRequest,
+  PublicUser,
+  RegisterRequest,
+  SessionResponse,
   TimelineResponse as DriftTimelineResponse
-} from '@drift/types';
+} from '@timixed-diary/types';

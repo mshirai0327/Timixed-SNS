@@ -1,56 +1,108 @@
-import { useEffect, useState, startTransition } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { createDrift, fetchTimeline } from './lib/api';
+
+import {
+  clearAccessToken,
+  createDrift,
+  fetchSession,
+  fetchTimeline,
+  getAccessToken,
+  loginAccount,
+  registerAccount,
+  setAccessToken
+} from './lib/api';
 import { sampleDrifts } from './lib/sampleData';
-import type { DriftPublic } from './lib/types';
+import type { DriftPublic, PublicUser } from './lib/types';
+
+type AuthMode = 'login' | 'register';
 
 export default function App() {
-  const seededItems = sampleDrifts;
-  const [drifts, setDrifts] = useState<DriftPublic[]>(seededItems);
+  const [drifts, setDrifts] = useState<DriftPublic[]>(sampleDrifts);
+  const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   const [body, setBody] = useState('');
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
+  const [authenticating, setAuthenticating] = useState(false);
   const [status, setStatus] = useState('漂っている言葉を受け取っています');
-  const [error, setError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerHandle, setRegisterHandle] = useState('');
+  const [registerDisplayName, setRegisterDisplayName] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [loginValue, setLoginValue] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  async function loadTimeline(viewer: PublicUser | null = currentUser) {
+    try {
+      const data = await fetchTimeline();
+
+      startTransition(() => {
+        setDrifts(data.drifts.length > 0 ? data.drifts : sampleDrifts);
+      });
+
+      setStatus(
+        data.drifts.length > 0
+          ? viewer
+            ? `${viewer.display_name} のタイムラインに漂着しました`
+            : '公開の漂着を表示しています'
+          : 'まだ静かなままです'
+      );
+    } catch {
+      setDrifts(sampleDrifts);
+      setStatus('接続できないため、サンプルの言葉を表示しています');
+    }
+  }
 
   useEffect(() => {
     let alive = true;
 
-    async function load() {
-      try {
-        const data = await fetchTimeline();
+    async function bootstrap() {
+      const token = getAccessToken();
+      let viewer: PublicUser | null = null;
 
-        if (!alive) {
-          return;
-        }
+      if (token) {
+        try {
+          const session = await fetchSession();
+          viewer = session.user;
 
-        startTransition(() => {
-          setDrifts(data.drifts.length > 0 ? data.drifts : seededItems);
-          setStatus(data.drifts.length > 0 ? '言葉が静かに漂着しました' : 'まだ静かなままです');
-        });
-      } catch {
-        if (!alive) {
-          return;
-        }
+          if (alive) {
+            setCurrentUser(session.user);
+            setStatus(`${session.user.display_name} として漂っています`);
+          }
+        } catch {
+          clearAccessToken();
 
-        setDrifts(seededItems);
-        setStatus('接続できないため、サンプルの言葉を表示しています');
-      } finally {
-        if (alive) {
-          setLoading(false);
+          if (alive) {
+            setAuthError('保存されていたログイン状態を復元できませんでした。もう一度ログインしてください。');
+          }
         }
+      } else if (alive) {
+        setStatus('公開の漂着を眺めています。流すにはログインしてください');
+      }
+
+      if (alive) {
+        await loadTimeline(viewer);
+        setLoading(false);
       }
     }
 
-    load();
+    bootstrap();
 
     return () => {
       alive = false;
     };
-  }, [seededItems]);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!currentUser) {
+      setPostError('言葉を流すにはログインが必要です。');
+      return;
+    }
+
     const trimmed = body.trim();
 
     if (!trimmed || posting) {
@@ -58,18 +110,13 @@ export default function App() {
     }
 
     setPosting(true);
-    setError(null);
+    setPostError(null);
 
     try {
       const result = await createDrift(trimmed);
       const optimistic: DriftPublic = {
         id: result.id,
-        author: {
-          id: 'me',
-          handle: 'me',
-          display_name: 'わたし',
-          avatar_url: null
-        },
+        author: currentUser,
         body: trimmed,
         resurface_count: 0,
         resonance_count: 0,
@@ -78,37 +125,58 @@ export default function App() {
       };
 
       startTransition(() => {
-        setDrifts((current) => [optimistic, ...current]);
+        setDrifts((items) => [optimistic, ...items]);
       });
 
       setBody('');
       setStatus('言葉が漂い始めます');
-    } catch {
-      const fallback: DriftPublic = {
-        id: `local-${crypto.randomUUID()}`,
-        author: {
-          id: 'me',
-          handle: 'me',
-          display_name: 'わたし',
-          avatar_url: null
-        },
-        body: trimmed,
-        resurface_count: 0,
-        resonance_count: 0,
-        is_resonated: false,
-        is_mine: true
-      };
-
-      startTransition(() => {
-        setDrifts((current) => [fallback, ...current]);
-      });
-
-      setBody('');
-      setStatus('API に届かなかったので、ローカルで漂わせました');
-      setError('投稿はローカルに追加しました。API 接続を確認すると同期できます。');
+    } catch (error) {
+      setPostError(error instanceof Error ? error.message : '投稿に失敗しました。');
     } finally {
       setPosting(false);
     }
+  }
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthenticating(true);
+    setAuthError(null);
+    setPostError(null);
+
+    try {
+      const session =
+        authMode === 'register'
+          ? await registerAccount({
+              email: registerEmail.trim(),
+              handle: registerHandle.trim(),
+              display_name: registerDisplayName.trim(),
+              password: registerPassword
+            })
+          : await loginAccount({
+              login: loginValue.trim(),
+              password: loginPassword
+            });
+
+      setAccessToken(session.token);
+      setCurrentUser(session.user);
+      setStatus(`${session.user.display_name} として漂っています`);
+      setRegisterPassword('');
+      setLoginPassword('');
+      await loadTimeline(session.user);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : '認証に失敗しました。');
+    } finally {
+      setAuthenticating(false);
+    }
+  }
+
+  function handleLogout() {
+    clearAccessToken();
+    setCurrentUser(null);
+    setPostError(null);
+    setAuthError(null);
+    setStatus('ログアウトしました。公開の漂着を表示しています');
+    void loadTimeline(null);
   }
 
   return (
@@ -120,7 +188,7 @@ export default function App() {
         <main className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
           <header className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-soft backdrop-blur md:flex-row md:items-end md:justify-between">
             <div className="max-w-2xl space-y-3">
-              <p className="text-xs uppercase tracking-[0.4em] text-mist/70">DRIFT</p>
+              <p className="text-xs uppercase tracking-[0.4em] text-mist/70">TimixedDiary</p>
               <h1 className="font-display text-4xl font-light tracking-[0.08em] text-white sm:text-5xl">
                 日付のない日記SNS
               </h1>
@@ -145,53 +213,163 @@ export default function App() {
                 <textarea
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
-                  placeholder="今の気配を、ここに置く"
+                  placeholder={currentUser ? '今の気配を、ここに置く' : 'ログインするとここに言葉を流せます'}
                   rows={5}
-                  className="w-full rounded-[22px] border border-white/10 bg-black/30 px-4 py-4 text-sm leading-7 text-white outline-none placeholder:text-white/30 focus:border-glow/60 focus:ring-2 focus:ring-glow/20"
+                  disabled={!currentUser}
+                  className="w-full rounded-[22px] border border-white/10 bg-black/30 px-4 py-4 text-sm leading-7 text-white outline-none placeholder:text-white/30 focus:border-glow/60 focus:ring-2 focus:ring-glow/20 disabled:opacity-60"
                 />
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs leading-6 text-mist/60">
-                    投稿日時は表示しません。言葉だけが、あとから浮かびます。
+                    投稿日時は表示しません。{currentUser ? '言葉だけが、あとから浮かびます。' : 'まずは公開の漂着を眺められます。'}
                   </p>
                   <button
                     type="submit"
-                    disabled={posting || body.trim().length === 0}
+                    disabled={posting || body.trim().length === 0 || !currentUser}
                     className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-ember to-glow px-6 py-3 text-sm font-medium text-white shadow-soft transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {posting ? '漂わせ中...' : '流す'}
                   </button>
                 </div>
-                {error ? (
+                {postError ? (
                   <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs leading-6 text-mist/80">
-                    {error}
+                    {postError}
                   </p>
                 ) : null}
               </form>
             </div>
 
-            <aside className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(167,139,250,0.12),rgba(255,255,255,0.03))] p-5 shadow-soft backdrop-blur">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm uppercase tracking-[0.35em] text-mist/70">約束</h2>
-                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] tracking-[0.25em] text-white/60">
-                  no timestamps
-                </span>
-              </div>
-              <ul className="mt-4 space-y-3 text-sm leading-7 text-mist">
-                <li>
-                  ・<code className="text-white/75">composed_at</code> と{' '}
-                  <code className="text-white/75">surface_at</code> は画面に出しません。
-                </li>
-                <li>・自分の投稿には「— わたし」を添えます。</li>
-                <li>・再浮上した投稿は控えめなバッジで示します。</li>
-                <li>・時系列ではなく、漂着として見せます。</li>
-              </ul>
-            </aside>
+            <div className="space-y-4">
+              <aside className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(167,139,250,0.12),rgba(255,255,255,0.03))] p-5 shadow-soft backdrop-blur">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm uppercase tracking-[0.35em] text-mist/70">account</h2>
+                  {currentUser ? (
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] tracking-[0.2em] text-white/70 transition hover:bg-white/10"
+                    >
+                      logout
+                    </button>
+                  ) : (
+                    <div className="flex rounded-full border border-white/10 bg-black/20 p-1 text-[11px] tracking-[0.2em] text-white/55">
+                      <button
+                        type="button"
+                        onClick={() => setAuthMode('login')}
+                        className={`rounded-full px-3 py-1 transition ${authMode === 'login' ? 'bg-white/10 text-white' : ''}`}
+                      >
+                        login
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuthMode('register')}
+                        className={`rounded-full px-3 py-1 transition ${authMode === 'register' ? 'bg-white/10 text-white' : ''}`}
+                      >
+                        register
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {currentUser ? (
+                  <div className="mt-4 space-y-3 text-sm text-mist">
+                    <p className="text-white/90">{currentUser.display_name}</p>
+                    <p>@{currentUser.handle}</p>
+                    <p className="text-xs leading-6 text-mist/60">
+                      ログイン中は、自分の投稿がタイムライン上で「— わたし」として識別されます。
+                    </p>
+                  </div>
+                ) : (
+                  <form className="mt-4 space-y-3" onSubmit={handleAuthSubmit}>
+                    {authMode === 'register' ? (
+                      <>
+                        <input
+                          value={registerEmail}
+                          onChange={(event) => setRegisterEmail(event.target.value)}
+                          placeholder="email"
+                          type="email"
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        />
+                        <input
+                          value={registerHandle}
+                          onChange={(event) => setRegisterHandle(event.target.value)}
+                          placeholder="handle"
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        />
+                        <input
+                          value={registerDisplayName}
+                          onChange={(event) => setRegisterDisplayName(event.target.value)}
+                          placeholder="display name"
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        />
+                        <input
+                          value={registerPassword}
+                          onChange={(event) => setRegisterPassword(event.target.value)}
+                          placeholder="password"
+                          type="password"
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          value={loginValue}
+                          onChange={(event) => setLoginValue(event.target.value)}
+                          placeholder="email or handle"
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        />
+                        <input
+                          value={loginPassword}
+                          onChange={(event) => setLoginPassword(event.target.value)}
+                          placeholder="password"
+                          type="password"
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                        />
+                      </>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={authenticating}
+                      className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-5 py-2.5 text-sm text-white transition hover:bg-white/15 disabled:opacity-40"
+                    >
+                      {authenticating ? 'connecting...' : authMode === 'register' ? '登録する' : 'ログイン'}
+                    </button>
+
+                    {authError ? (
+                      <p className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-mist/80">
+                        {authError}
+                      </p>
+                    ) : null}
+                  </form>
+                )}
+              </aside>
+
+              <aside className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(167,139,250,0.12),rgba(255,255,255,0.03))] p-5 shadow-soft backdrop-blur">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm uppercase tracking-[0.35em] text-mist/70">約束</h2>
+                  <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] tracking-[0.25em] text-white/60">
+                    no timestamps
+                  </span>
+                </div>
+                <ul className="mt-4 space-y-3 text-sm leading-7 text-mist">
+                  <li>
+                    ・<code className="text-white/75">composed_at</code> と{' '}
+                    <code className="text-white/75">surface_at</code> は画面に出しません。
+                  </li>
+                  <li>・自分の投稿には「— わたし」を添えます。</li>
+                  <li>・再浮上した投稿は控えめなバッジで示します。</li>
+                  <li>・時系列ではなく、漂着として見せます。</li>
+                </ul>
+              </aside>
+            </div>
           </section>
 
           <section className="space-y-4">
             <div className="flex items-end justify-between">
               <h2 className="text-sm uppercase tracking-[0.35em] text-mist/70">timeline</h2>
-              <p className="text-xs text-mist/50">API が未接続ならサンプルを表示します</p>
+              <p className="text-xs text-mist/50">
+                {currentUser ? 'ログイン後のホームを表示しています' : '未ログイン時は公開の漂着を表示します'}
+              </p>
             </div>
 
             <div className="grid gap-4">
@@ -216,9 +394,7 @@ export default function App() {
                     ) : null}
                   </div>
 
-                  <p className="mt-3 whitespace-pre-wrap text-base leading-8 text-white/92">
-                    {drift.body}
-                  </p>
+                  <p className="mt-3 whitespace-pre-wrap text-base leading-8 text-white/92">{drift.body}</p>
 
                   <div className="mt-4 flex items-center gap-4 text-xs text-mist/55">
                     <span>{drift.resonance_count} resonance</span>

@@ -1,5 +1,5 @@
 {
-  "name": "@drift/web",
+  "name": "@timixed-diary/web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit && tsc --project tsconfig.node.json --noEmit"
   },
   "dependencies": {
-    "@drift/types": "workspace:*",
+    "@timixed-diary/types": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

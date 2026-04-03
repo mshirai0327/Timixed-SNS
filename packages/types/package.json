@@ -1,5 +1,5 @@
 {
-  "name": "@drift/types",
+  "name": "@timixed-diary/types",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,4 +13,3 @@
     "typescript": "^5.8.2"
   }
 }
-

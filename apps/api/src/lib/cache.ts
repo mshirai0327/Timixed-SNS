@@ -1,6 +1,6 @@
 import { createClient, type RedisClientType } from "redis";
 
-import { config } from "../config";
+import { config } from "../config.js";
 
 let redis: RedisClientType | null = config.REDIS_URL
   ? createClient({
@@ -29,4 +29,3 @@ export async function closeCache() {
     await redis.quit();
   }
 }
-

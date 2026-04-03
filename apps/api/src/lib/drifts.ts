@@ -2,9 +2,9 @@ import crypto from "node:crypto";
 
 import type { CreateDriftResponse, DriftPublic, TimelineResponse } from "@timixed-diary/types";
 
-import { getCache } from "./cache";
-import { sql } from "./db";
-import { ApiError } from "./errors";
+import { getCache } from "./cache.js";
+import { sql } from "./db.js";
+import { ApiError } from "./errors.js";
 
 const DEFAULT_TIMELINE_LIMIT = 20;
 const MAX_TIMELINE_LIMIT = 50;

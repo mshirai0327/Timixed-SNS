@@ -1,6 +1,6 @@
 import postgres from "postgres";
 
-import { config } from "../config";
+import { config } from "../config.js";
 
 export const sql = postgres(config.DATABASE_URL, {
   max: 10,
@@ -11,4 +11,3 @@ export const sql = postgres(config.DATABASE_URL, {
 export async function closeDatabase() {
   await sql.end({ timeout: 5 });
 }
-

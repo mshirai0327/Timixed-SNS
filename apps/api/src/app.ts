@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z } from "zod";
 
-import { optionalUser, requireUser } from "./lib/auth";
-import { createDrift, getTimeline } from "./lib/drifts";
-import { toErrorResponse } from "./lib/errors";
-import { getSession, loginUser, registerUser } from "./lib/users";
+import { optionalUser, requireUser } from "./lib/auth.js";
+import { createDrift, getTimeline } from "./lib/drifts.js";
+import { toErrorResponse } from "./lib/errors.js";
+import { getSession, loginUser, registerUser } from "./lib/users.js";
 
 const createDriftSchema = z.object({
   body: z.string(),
@@ -29,6 +29,22 @@ const loginSchema = z.object({
 });
 
 export const app = new Hono();
+
+app.get("/", (c) =>
+  c.json({
+    status: "ok",
+    service: "TimixedDiary API",
+    message: "Open http://localhost:8080 for the web app, or use /health for a quick API check.",
+    endpoints: {
+      health: "/health",
+      auth_register: "/api/v1/auth/register",
+      auth_login: "/api/v1/auth/login",
+      auth_me: "/api/v1/auth/me",
+      timeline: "/api/v1/timeline",
+      drifts: "/api/v1/drifts",
+    },
+  }),
+);
 
 app.use(
   "/api/*",

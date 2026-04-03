@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 
-import { config } from "../config";
+import { config } from "../config.js";
 
 const secret = new TextEncoder().encode(config.APP_SECRET);
 
@@ -22,4 +22,3 @@ export async function verifyAccessToken(token: string) {
 
   return payload.sub;
 }
-

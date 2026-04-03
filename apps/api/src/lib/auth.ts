@@ -1,8 +1,8 @@
 import type { Context } from "hono";
 
-import { ApiError } from "./errors";
-import { verifyAccessToken } from "./tokens";
-import { findUserById, type AuthenticatedUser } from "./users";
+import { ApiError } from "./errors.js";
+import { verifyAccessToken } from "./tokens.js";
+import { findUserById, type AuthenticatedUser } from "./users.js";
 
 export async function requireUser(c: Context): Promise<AuthenticatedUser> {
   const authorization = c.req.header("authorization");

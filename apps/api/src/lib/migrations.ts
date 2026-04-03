@@ -3,8 +3,8 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { config } from "../config";
-import { sql } from "./db";
+import { config } from "../config.js";
+import { sql } from "./db.js";
 
 function resolveMigrationsDir() {
   const candidates = [

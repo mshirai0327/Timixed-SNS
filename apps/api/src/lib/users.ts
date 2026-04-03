@@ -1,9 +1,9 @@
 import type { AuthResponse, PublicUser, SessionResponse } from "@timixed-diary/types";
 
-import { ApiError } from "./errors";
-import { sql } from "./db";
-import { hashPassword, verifyPassword } from "./password";
-import { signAccessToken } from "./tokens";
+import { ApiError } from "./errors.js";
+import { sql } from "./db.js";
+import { hashPassword, verifyPassword } from "./password.js";
+import { signAccessToken } from "./tokens.js";
 
 type UserRow = {
   id: string;

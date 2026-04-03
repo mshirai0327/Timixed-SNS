@@ -1,10 +1,10 @@
 import { serve } from "@hono/node-server";
 
-import { app } from "./app";
-import { config } from "./config";
-import { connectCache, closeCache } from "./lib/cache";
-import { closeDatabase } from "./lib/db";
-import { runMigrations } from "./lib/migrations";
+import { app } from "./app.js";
+import { config } from "./config.js";
+import { connectCache, closeCache } from "./lib/cache.js";
+import { closeDatabase } from "./lib/db.js";
+import { runMigrations } from "./lib/migrations.js";
 
 async function withRetry<T>(
   label: string,

@@ -7,10 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:api": "npm --workspace @drift/api run dev",
-    "dev:web": "npm --workspace @drift/web run dev",
-    "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "dev:api": "corepack pnpm --filter @drift/api dev",
+    "dev:web": "corepack pnpm --filter @drift/web dev",
+    "build": "corepack pnpm -r --if-present build",
+    "typecheck": "corepack pnpm -r --if-present typecheck"
   }
 }
-

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "node --watch --env-file=.env --import tsx src/index.ts",
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
@@ -21,4 +21,3 @@
     "typescript": "^5.8.2"
   }
 }
-

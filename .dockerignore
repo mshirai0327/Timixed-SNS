@@ -1,0 +1,14 @@
+.git
+.gitignore
+.codex
+.claude
+node_modules
+apps/*/node_modules
+apps/*/dist
+packages/*/dist
+dist
+compose.env
+.env
+.env.*
+!.env.example
+

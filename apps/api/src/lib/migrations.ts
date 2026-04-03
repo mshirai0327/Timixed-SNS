@@ -1,12 +1,33 @@
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { config } from "../config";
 import { sql } from "./db";
 
-const migrationsDir = fileURLToPath(new URL("../../../../db/migrations", import.meta.url));
+function resolveMigrationsDir() {
+  const candidates = [
+    config.MIGRATIONS_DIR,
+    path.resolve(process.cwd(), "db/migrations"),
+    path.resolve(process.cwd(), "../db/migrations"),
+    path.resolve(process.cwd(), "../../db/migrations"),
+    fileURLToPath(new URL("../../../../db/migrations", import.meta.url)),
+    fileURLToPath(new URL("../../../../../../db/migrations", import.meta.url)),
+  ].filter((value): value is string => Boolean(value));
+
+  const matched = candidates.find((candidate) => existsSync(candidate));
+
+  if (!matched) {
+    throw new Error("Could not locate db/migrations. Set MIGRATIONS_DIR explicitly.");
+  }
+
+  return matched;
+}
 
 export async function runMigrations() {
+  const migrationsDir = resolveMigrationsDir();
+
   await sql`
     create table if not exists schema_migrations (
       filename text primary key,

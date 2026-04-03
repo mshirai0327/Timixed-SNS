@@ -7,6 +7,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().optional(),
   APP_SECRET: z.string().min(32),
   ACCESS_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  MIGRATIONS_DIR: z.string().optional(),
 });
 
 export const config = envSchema.parse(process.env);

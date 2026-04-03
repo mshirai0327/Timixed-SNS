@@ -53,6 +53,7 @@ Misskey のように self-hosted しやすい、`Node.js + PostgreSQL (+ Redis)`
 - Hono API の `GET /api/v1/timeline`
 - API 起動時の自動マイグレーション適用
 - React フロントのタイムライン、投稿フォーム、ログイン / 登録 UI
+- Podman / Docker Compose でのローカル起動構成
 
 まだ未完了のもの:
 
@@ -60,11 +61,75 @@ Misskey のように self-hosted しやすい、`Node.js + PostgreSQL (+ Redis)`
 - 共鳴、フォロー、プロフィール更新、自分の投稿一覧
 - Realtime
 - 再浮上ジョブ本体
-- Podman / Docker Compose の同梱
 
 `composed_at` / `surface_at` は API レスポンス型にもフロント UI にも出していません。
 
-## 動かし方
+## Podman Compose で動かす
+
+### 1. Compose 用の環境変数を作る
+
+```bash
+cp .env.example .env
+```
+
+最低でも `APP_SECRET` は変更してください。
+
+```env
+POSTGRES_DB=timixed_diary
+POSTGRES_USER=timixed_diary
+POSTGRES_PASSWORD=timixed_diary
+APP_SECRET=change-this-before-release-please-1234567890
+ACCESS_TOKEN_TTL_DAYS=30
+```
+
+### 2. 起動する
+
+```bash
+podman compose up --build
+```
+
+バックグラウンド起動:
+
+```bash
+podman compose up --build -d
+```
+
+停止:
+
+```bash
+podman compose down
+```
+
+データも消す:
+
+```bash
+podman compose down -v
+```
+
+### 3. アクセス先
+
+- Web: `http://localhost:8080`
+- API health: `http://localhost:8787/health`
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+
+Web コンテナが `/api` を API コンテナへプロキシするので、ブラウザは `http://localhost:8080` だけ開けば確認できます。
+
+### WSL メモ
+
+#### いちばん簡単な方法
+
+この WSL ディストリビューションの中に Podman を直接入れて、ここで `podman compose up --build` を実行する方法です。これなら追加の Windows 側設定はほぼ不要です。
+
+#### Windows 側の Podman Desktop / Podman Machine を使う場合
+
+別の WSL ディストリビューションから Windows 側の Podman Machine を使う場合、WSL 側に `podman` クライアントを入れて、`podman system connection` を設定する必要があります。Podman Desktop は他の WSL ディストリビューションを自動設定しません。
+
+このケースでは公式手順を参照してください:
+
+- Podman Desktop: <https://podman-desktop.io/docs/podman/accessing-podman-from-another-wsl-instance>
+
+## 手動で動かす
 
 ### 1. 依存を入れる
 

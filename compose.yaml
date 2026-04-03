@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-timixed_diary}"
+      POSTGRES_USER: "${POSTGRES_USER:-timixed_diary}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-timixed_diary}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timixed_diary} -d ${POSTGRES_DB:-timixed_diary}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Containerfile.api
+    environment:
+      PORT: 8787
+      DATABASE_URL: "postgres://${POSTGRES_USER:-timixed_diary}:${POSTGRES_PASSWORD:-timixed_diary}@postgres:5432/${POSTGRES_DB:-timixed_diary}"
+      REDIS_URL: "redis://redis:6379"
+      APP_SECRET: "${APP_SECRET}"
+      ACCESS_TOKEN_TTL_DAYS: "${ACCESS_TOKEN_TTL_DAYS:-30}"
+      MIGRATIONS_DIR: "/app/db/migrations"
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Containerfile.web
+      args:
+        VITE_API_BASE_URL: /api/v1
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
